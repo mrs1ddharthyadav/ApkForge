@@ -2,7 +2,7 @@
 
 An Android app for inspecting, editing and re-signing APK files, built in stages.
 
-**Current version: Stage 2.** It can:
+**Current version: Stage 3.** It can:
 
 - List every installed app (with search, and a switch for system apps)
 - Open any `.apk` file from your phone, or use "Open with APK Forge" from a file manager
@@ -16,6 +16,11 @@ An Android app for inspecting, editing and re-signing APK files, built in stages
 - **Clone apps:** a new package name makes a copy that installs next to the original
 - **Merge split APKs:** turn a Play Store app installed as several APKs into one APK
 - **Open bundles:** `.apks`, `.xapk` and `.apkm` files are merged into one APK automatically
+- **Full edit:** open an APK as a project and change anything inside it, then Build:
+  - edit the manifest, layouts and any other XML as readable text, with colouring and find & replace
+  - edit every text string in every language from the Strings tab
+  - preview and replace images, add new files, save copies of files, delete files
+  - mistakes in XML are caught when you save the file, before they can break the app
 
 ## How to build and install it
 
@@ -53,7 +58,7 @@ You only need to do the setup once.
 |---|---|
 | **1 (done)** | App list, APK details, signature check, file browser, extract, re-sign, install |
 | **2 (done)** | Quick edits: app name, icon, version, package name (clone apps). Merge split APKs into one |
-| 3 | Full resource editor: decode the APK, browse and edit XML files (manifest, layouts, strings) in a code editor, replace images, rebuild |
+| **3 (done)** | Full resource editor: decode the APK, browse and edit XML files (manifest, layouts, strings) in a code editor, replace images, rebuild |
 | 4 | Code (smali) editor: decompile `classes.dex`, edit with search and syntax highlighting, recompile |
 | 5 | Extras: sign with your own key, common patches, translation helper, settings |
 
@@ -65,6 +70,7 @@ Stages 2 and 3 use the [ARSCLib](https://github.com/REAndroid/ARSCLib) library, 
 app/src/main/java/com/sangam/apkforge/
   MainActivity.kt        switches between screens, handles file pickers
   MainViewModel.kt       app state and actions (open, sign, save, install)
+  ProjectViewModel.kt    full-edit session, runs on its own worker thread
   data/
     AppRepository.kt     installed apps and icons
     ApkInspector.kt      reads manifest info, signature and file list
@@ -72,7 +78,8 @@ app/src/main/java/com/sangam/apkforge/
     FileOps.kt           copying files, opening the installer
     Models.kt            data classes
   engine/
-    ApkEditEngine.java   edits APKs and merges splits (uses ARSCLib, in app/libs)
+    ApkEditEngine.java   quick edits and split merging (uses ARSCLib, in app/libs)
+    ApkProject.java      full-edit projects: files, XML text, strings, build
   ui/
     Components.kt        shared buttons, cards, icon loader
     theme/Theme.kt       colours and shapes
