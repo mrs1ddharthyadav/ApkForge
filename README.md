@@ -2,7 +2,7 @@
 
 An Android app for inspecting, editing and re-signing APK files, built in stages.
 
-**This is Stage 1.** It can:
+**Current version: Stage 2.** It can:
 
 - List every installed app (with search, and a switch for system apps)
 - Open any `.apk` file from your phone, or use "Open with APK Forge" from a file manager
@@ -12,6 +12,10 @@ An Android app for inspecting, editing and re-signing APK files, built in stages
 - Browse the files inside the APK and save any single file
 - Save (extract) an installed app's APK
 - Re-sign an APK and save it, or re-sign and install it
+- **Edit an app:** change its name, icon, version name, version code and package name
+- **Clone apps:** a new package name makes a copy that installs next to the original
+- **Merge split APKs:** turn a Play Store app installed as several APKs into one APK
+- **Open bundles:** `.apks`, `.xapk` and `.apkm` files are merged into one APK automatically
 
 ## How to build and install it
 
@@ -38,20 +42,22 @@ You only need to do the setup once.
 ## Things to know
 
 - **Signing key.** APK Forge signs APKs with its own key, stored in `app/src/main/assets/signing/apkforge.p12` (password `apkforge`). Android will not install a re-signed app on top of the original version, because the keys differ. Uninstall the original first.
-- **Split APKs.** Many Play Store apps are installed as several APK files. For now the app only handles the main (base) file and shows a warning for these apps. Merging splits comes in Stage 2.
+- **Split APKs.** Many Play Store apps are installed as several APK files. Tap "Merge into one APK" on such an app before saving, editing or installing it.
+- **Clones.** Some apps check their own package name or signature (banking apps, many games, apps with Google sign-in) and may close or refuse to log in after editing. That is a protection inside those apps, not a bug in APK Forge.
+- **Encrypted bundles.** Newer `.apkm` files from APKMirror can be encrypted and won't open.
 - **Use it responsibly.** Edit your own apps, or apps you are allowed to modify. Removing ads, licence checks or paywalls from other people's apps usually breaks their terms of service.
 
 ## Roadmap
 
 | Stage | What it adds |
 |---|---|
-| **1 (this one)** | App list, APK details, signature check, file browser, extract, re-sign, install |
-| 2 | Quick edits: app name, icon, version, package name (clone apps). Merge split APKs into one |
+| **1 (done)** | App list, APK details, signature check, file browser, extract, re-sign, install |
+| **2 (done)** | Quick edits: app name, icon, version, package name (clone apps). Merge split APKs into one |
 | 3 | Full resource editor: decode the APK, browse and edit XML files (manifest, layouts, strings) in a code editor, replace images, rebuild |
 | 4 | Code (smali) editor: decompile `classes.dex`, edit with search and syntax highlighting, recompile |
 | 5 | Extras: sign with your own key, common patches, translation helper, settings |
 
-Stages 2 and 3 will use the [ARSCLib](https://github.com/REAndroid/ARSCLib) library, which reads and writes Android's binary resource files directly on the phone. Stage 4 will use Google's smali/baksmali libraries.
+Stages 2 and 3 use the [ARSCLib](https://github.com/REAndroid/ARSCLib) library, which reads and writes Android's binary resource files directly on the phone. Stage 4 will use Google's smali/baksmali libraries.
 
 ## Project layout
 
@@ -65,6 +71,8 @@ app/src/main/java/com/sangam/apkforge/
     ApkSigning.kt        signs APKs (uses Google's apksig library)
     FileOps.kt           copying files, opening the installer
     Models.kt            data classes
+  engine/
+    ApkEditEngine.java   edits APKs and merges splits (uses ARSCLib, in app/libs)
   ui/
     Components.kt        shared buttons, cards, icon loader
     theme/Theme.kt       colours and shapes
