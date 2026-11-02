@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.sangam.apkforge.ui.screens.DetailsScreen
+import com.sangam.apkforge.ui.screens.EditScreen
 import com.sangam.apkforge.ui.screens.FilesScreen
 import com.sangam.apkforge.ui.screens.HomeScreen
 import com.sangam.apkforge.ui.theme.ApkForgeTheme
@@ -68,6 +69,9 @@ private fun App(vm: MainViewModel, onExit: () -> Unit) {
     val pickApk = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.openApkUri(uri)
     }
+    val pickIcon = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) vm.pickIcon(uri)
+    }
     val saveApk = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")
     ) { uri -> vm.completeSave(uri) }
@@ -93,14 +97,16 @@ private fun App(vm: MainViewModel, onExit: () -> Unit) {
     }
 
     val openPicker = {
-        // Some file managers label APKs as generic binary files, so accept both.
-        pickApk.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream"))
+        // APKs and bundles (.apks, .xapk, .apkm) get many different labels from file managers,
+        // so accept any file and check what it really is after opening it.
+        pickApk.launch(arrayOf("*/*"))
     }
 
     when (val s = screen) {
         Screen.Home -> HomeScreen(vm, snackbar, onPickApk = openPicker)
         Screen.Details -> DetailsScreen(vm, snackbar)
         is Screen.Files -> FilesScreen(vm, s.folder, snackbar)
+        Screen.Edit -> EditScreen(vm, snackbar, onPickIcon = { pickIcon.launch("image/*") })
     }
 
     busy?.let { label ->

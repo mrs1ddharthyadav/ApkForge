@@ -14,6 +14,25 @@ import java.util.zip.ZipFile
 /** File helpers. All paths live under cache/work so FileProvider can share them. */
 object FileOps {
 
+    /** Files that contain several APKs (split APK bundles from SAI, APKPure, APKMirror...). */
+    val BUNDLE_EXTENSIONS = listOf("apks", "xapk", "apkm")
+
+    /**
+     * True if [file] is a bundle of APKs rather than a single APK. Checks the extension first,
+     * then looks inside: a real APK has AndroidManifest.xml at its root, a bundle has .apk files.
+     */
+    fun isBundle(file: File): Boolean {
+        if (BUNDLE_EXTENSIONS.any { file.name.endsWith(".$it", true) }) return true
+        return try {
+            ZipFile(file).use { zip ->
+                zip.getEntry("AndroidManifest.xml") == null &&
+                    zip.entries().asSequence().any { it.name.endsWith(".apk", true) }
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     fun workDir(context: Context, sub: String): File =
         File(context.cacheDir, "work/$sub").apply { mkdirs() }
 
@@ -22,7 +41,8 @@ object FileOps {
         val name = displayName(context, uri)?.let(::safeName) ?: "picked.apk"
         val dir = workDir(context, "opened")
         dir.listFiles()?.forEach { it.delete() }
-        val target = File(dir, if (name.endsWith(".apk", true)) name else "$name.apk")
+        val keepName = name.endsWith(".apk", true) || BUNDLE_EXTENSIONS.any { name.endsWith(".$it", true) }
+        val target = File(dir, if (keepName) name else "$name.apk")
         val input = context.contentResolver.openInputStream(uri)
             ?: throw IOException("Could not open the selected file.")
         input.use { inp -> target.outputStream().use { inp.copyTo(it) } }

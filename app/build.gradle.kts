@@ -12,8 +12,8 @@ android {
         applicationId = "com.sangam.apkforge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {
@@ -62,4 +62,8 @@ dependencies {
 
     // Google's official APK signing and verification library
     implementation(libs.apksig)
+
+    // ARSCLib by REAndroid (Apache 2.0): reads and writes Android binary XML and resources.
+    // Same build that APKEditor ships, kept in app/libs so its API never changes under us.
+    implementation(files("libs/ARSCLib.jar"))
 }

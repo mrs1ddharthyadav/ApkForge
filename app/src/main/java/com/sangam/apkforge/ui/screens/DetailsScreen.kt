@@ -11,7 +11,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CallMerge
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.InstallMobile
@@ -117,14 +119,24 @@ private fun DetailsContent(vm: MainViewModel, d: ApkDetails, enabled: Boolean) {
         if (d.splitApks.isNotEmpty()) {
             Notice(
                 "This app is installed as ${d.splitApks.size + 1} APK files (a split APK). " +
-                    "Only the main (base) APK is shown here. Saving or installing just this one file " +
-                    "usually won't work on its own. Split APK support is planned for a later stage."
+                    "Only the main (base) APK is shown here, and it won't work on its own. " +
+                    "Merge the files into one APK before saving, editing or installing."
+            )
+            PrimaryAction(
+                "Merge into one APK",
+                Icons.Filled.CallMerge,
+                vm::mergeInstalledSplits,
+                Modifier.fillMaxWidth(),
+                enabled,
             )
         }
 
         // Actions
         ButtonRow {
-            PrimaryAction("Save APK", Icons.Filled.Download, vm::requestSaveOriginal, Modifier.weight(1f), enabled)
+            PrimaryAction("Edit app", Icons.Filled.Edit, vm::openEditor, Modifier.weight(1f), enabled)
+            SecondaryAction("Save APK", Icons.Filled.Download, vm::requestSaveOriginal, Modifier.weight(1f), enabled)
+        }
+        ButtonRow {
             SecondaryAction("Browse files", Icons.Filled.FolderZip, { vm.openFiles() }, Modifier.weight(1f), enabled)
         }
         ButtonRow {
