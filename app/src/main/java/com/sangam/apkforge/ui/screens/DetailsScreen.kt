@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CallMerge
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Draw
@@ -52,7 +53,7 @@ import com.sangam.apkforge.ui.SectionCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DetailsScreen(vm: MainViewModel, snackbar: SnackbarHostState) {
+fun DetailsScreen(vm: MainViewModel, snackbar: SnackbarHostState, onFullEdit: () -> Unit) {
     val state by vm.details.collectAsState()
     val busy by vm.busy.collectAsState()
 
@@ -84,14 +85,14 @@ fun DetailsScreen(vm: MainViewModel, snackbar: SnackbarHostState) {
                 is DetailsState.Failed -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                     Text(s.message, color = MaterialTheme.colorScheme.error)
                 }
-                is DetailsState.Loaded -> DetailsContent(vm, s.details, enabled = busy == null)
+                is DetailsState.Loaded -> DetailsContent(vm, s.details, enabled = busy == null, onFullEdit = onFullEdit)
             }
         }
     }
 }
 
 @Composable
-private fun DetailsContent(vm: MainViewModel, d: ApkDetails, enabled: Boolean) {
+private fun DetailsContent(vm: MainViewModel, d: ApkDetails, enabled: Boolean, onFullEdit: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
@@ -134,9 +135,15 @@ private fun DetailsContent(vm: MainViewModel, d: ApkDetails, enabled: Boolean) {
         // Actions
         ButtonRow {
             PrimaryAction("Edit app", Icons.Filled.Edit, vm::openEditor, Modifier.weight(1f), enabled)
-            SecondaryAction("Save APK", Icons.Filled.Download, vm::requestSaveOriginal, Modifier.weight(1f), enabled)
+            PrimaryAction("Full edit", Icons.Filled.Code, onFullEdit, Modifier.weight(1f), enabled)
         }
+        Text(
+            "Edit app: name, icon, version, package. Full edit: every file, layout and text inside the APK.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         ButtonRow {
+            SecondaryAction("Save APK", Icons.Filled.Download, vm::requestSaveOriginal, Modifier.weight(1f), enabled)
             SecondaryAction("Browse files", Icons.Filled.FolderZip, { vm.openFiles() }, Modifier.weight(1f), enabled)
         }
         ButtonRow {

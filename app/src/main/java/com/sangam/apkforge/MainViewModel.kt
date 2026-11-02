@@ -28,6 +28,8 @@ sealed interface Screen {
     data object Details : Screen
     data class Files(val folder: String) : Screen
     data object Edit : Screen
+    data object Project : Screen
+    data class TextEditor(val path: String) : Screen
 }
 
 sealed interface DetailsState {
@@ -182,6 +184,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             Screen.Home -> return false
             Screen.Details -> _screen.value = Screen.Home
             Screen.Edit -> _screen.value = Screen.Details
+            Screen.Project -> _screen.value = Screen.Details
+            is Screen.TextEditor -> _screen.value = Screen.Project
             is Screen.Files -> {
                 _screen.value = if (s.folder.isEmpty()) Screen.Details
                 else Screen.Files(s.folder.substringBeforeLast('/', missingDelimiterValue = ""))
@@ -334,6 +338,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (install) install(signed)
             else askWhereToSave(PendingSave.WholeFile(signed, signed.name))
         }
+    }
+
+    // ---- hooks used by the full editor (ProjectViewModel) ----
+
+    fun showMessage(text: String) {
+        _message.value = text
+    }
+
+    fun setBusyLabel(label: String?) {
+        _busy.value = label
+    }
+
+    fun requestSave(file: File, name: String) = askWhereToSave(PendingSave.WholeFile(file, name))
+
+    fun installApk(file: File) {
+        viewModelScope.launch { install(file) }
+    }
+
+    fun openFullEditor() {
+        if (current() == null) return
+        _screen.value = Screen.Project
+    }
+
+    fun openTextEditor(path: String) {
+        _screen.value = Screen.TextEditor(path)
     }
 
     // ---- saving ----

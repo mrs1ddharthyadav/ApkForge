@@ -28,19 +28,27 @@ import com.sangam.apkforge.ui.screens.DetailsScreen
 import com.sangam.apkforge.ui.screens.EditScreen
 import com.sangam.apkforge.ui.screens.FilesScreen
 import com.sangam.apkforge.ui.screens.HomeScreen
+import com.sangam.apkforge.ui.screens.ProjectScreen
+import com.sangam.apkforge.ui.screens.TextEditorScreen
 import com.sangam.apkforge.ui.theme.ApkForgeTheme
 
 class MainActivity : ComponentActivity() {
 
     private val vm: MainViewModel by viewModels()
+    private val pvm: ProjectViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) handleViewIntent(intent)
+        // The full editor reports back through the main view model's message, busy and save hooks.
+        pvm.showMessage = vm::showMessage
+        pvm.setBusy = vm::setBusyLabel
+        pvm.askToSave = vm::requestSave
+        pvm.install = vm::installApk
         setContent {
             ApkForgeTheme {
-                App(vm, onExit = { finish() })
+                App(vm, pvm, onExit = { finish() })
             }
         }
     }
@@ -59,7 +67,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun App(vm: MainViewModel, onExit: () -> Unit) {
+private fun App(vm: MainViewModel, pvm: ProjectViewModel, onExit: () -> Unit) {
     val screen by vm.screen.collectAsState()
     val message by vm.message.collectAsState()
     val busy by vm.busy.collectAsState()
@@ -82,7 +90,7 @@ private fun App(vm: MainViewModel, onExit: () -> Unit) {
     LaunchedEffect(saveRequest) {
         val req = saveRequest ?: return@LaunchedEffect
         vm.saveRequestLaunched()
-        if (req is PendingSave.WholeFile) saveApk.launch(req.suggestedName)
+        if (req.suggestedName.endsWith(".apk", ignoreCase = true)) saveApk.launch(req.suggestedName)
         else saveOther.launch(req.suggestedName)
     }
 
@@ -104,9 +112,32 @@ private fun App(vm: MainViewModel, onExit: () -> Unit) {
 
     when (val s = screen) {
         Screen.Home -> HomeScreen(vm, snackbar, onPickApk = openPicker)
-        Screen.Details -> DetailsScreen(vm, snackbar)
+        Screen.Details -> DetailsScreen(vm, snackbar, onFullEdit = {
+            val d = (vm.details.value as? DetailsState.Loaded)?.details
+            if (d != null) {
+                pvm.open(d.file, d.label)
+                vm.openFullEditor()
+            }
+        })
         is Screen.Files -> FilesScreen(vm, s.folder, snackbar)
         Screen.Edit -> EditScreen(vm, snackbar, onPickIcon = { pickIcon.launch("image/*") })
+        Screen.Project -> ProjectScreen(
+            pvm = pvm,
+            snackbar = snackbar,
+            busy = busy != null,
+            onOpenEditor = vm::openTextEditor,
+            onExit = {
+                pvm.close()
+                vm.back()
+            },
+        )
+        is Screen.TextEditor -> TextEditorScreen(
+            pvm = pvm,
+            path = s.path,
+            snackbar = snackbar,
+            busy = busy != null,
+            onClose = { vm.back() },
+        )
     }
 
     busy?.let { label ->
