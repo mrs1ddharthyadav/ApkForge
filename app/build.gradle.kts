@@ -12,20 +12,34 @@ android {
         applicationId = "com.sangam.apkforge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.2.1"
+    }
+
+    // One fixed key for every build, so each new version installs as an update
+    // instead of failing with "App not installed" (signature mismatch).
+    // Fine for a personal project; use a private key if you ever publish on a store.
+    signingConfigs {
+        create("forge") {
+            storeFile = file("forge-build.p12")
+            storePassword = "forgebuild"
+            keyAlias = "forgebuild"
+            keyPassword = "forgebuild"
+            storeType = "PKCS12"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("forge")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Uses the debug key so a release build can be installed directly.
-            // Replace with your own signing config before publishing anywhere.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("forge")
         }
     }
 
