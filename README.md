@@ -2,7 +2,7 @@
 
 An Android app for inspecting, editing and re-signing APK files, built in stages.
 
-**Current version: Stage 3.** It can:
+**Current version: 0.4.0 (Stage 3 + AI assistant).** It can:
 
 - List every installed app (with search, and a switch for system apps)
 - Open any `.apk` file from your phone, or use "Open with APK Forge" from a file manager
@@ -21,6 +21,9 @@ An Android app for inspecting, editing and re-signing APK files, built in stages
   - edit every text string in every language from the Strings tab
   - preview and replace images, add new files, save copies of files, delete files
   - mistakes in XML are caught when you save the file, before they can break the app
+- **AI assistant (AI tab in Full edit):** describe a change in plain words and Claude finds the right files and
+  edits them: layouts, manifest, texts and translations, colors, sizes and switches. Uses your own Claude API key
+  (Settings, gear icon on the home screen). The key is stored encrypted with the Android Keystore.
 
 ## How to build and install it
 
@@ -79,7 +82,10 @@ app/src/main/java/com/sangam/apkforge/
     Models.kt            data classes
   engine/
     ApkEditEngine.java   quick edits and split merging (uses ARSCLib, in app/libs)
-    ApkProject.java      full-edit projects: files, XML text, strings, build
+    ApkProject.java      full-edit projects: files, XML text, strings, values, build
+    ClaudeClient.java    Claude Messages API client (key sent only to api.anthropic.com)
+    AiTools.java         tools Claude can call on the open APK
+    AiAgent.java         the chat loop: send, run tools, repeat
   ui/
     Components.kt        shared buttons, cards, icon loader
     theme/Theme.kt       colours and shapes
