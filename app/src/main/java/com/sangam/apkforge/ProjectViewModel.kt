@@ -242,6 +242,21 @@ class ProjectViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Exports a readable copy of the whole APK (XML decoded) as a ZIP, then asks where to save it. */
+    fun exportSource() {
+        work("Exporting source...") {
+            val p = requireProject()
+            val name = FileOps.safeName("${label}_source").replace(' ', '_') + ".zip"
+            val out = File(FileOps.workDir(getApplication(), "source"), name)
+            val count = p.exportSource(out) { done, total, _ ->
+                if (done % 25 == 0) setBusy("Exporting source... ($done of $total files)")
+                true
+            }
+            showMessage("Exported $count files, with ${p.lastExportDecodedCount} XML files made readable.")
+            askToSave(out, name)
+        }
+    }
+
     // ---- strings ----
 
     fun loadStrings() {

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Memory
@@ -121,6 +122,9 @@ fun ProjectScreen(
                 },
                 actions = {
                     if (open != null) {
+                        IconButton(onClick = { pvm.exportSource() }, enabled = !busy && !aiRunning) {
+                            Icon(Icons.Filled.Download, contentDescription = "Export source as a ZIP")
+                        }
                         TextButton(onClick = { showBuild = true }, enabled = !busy && !aiRunning) {
                             Icon(Icons.Filled.Build, contentDescription = null, modifier = Modifier.size(18.dp))
                             Text("  Build")
@@ -244,6 +248,27 @@ private fun FilesTab(
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
+            if (folder.isEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SecondaryAction(
+                        "Export source (.zip)",
+                        Icons.Filled.Download,
+                        { pvm.exportSource() },
+                        Modifier.weight(1f),
+                        enabled = !busy,
+                    )
+                }
+                Text(
+                    "Saves every file as a ZIP for your computer, with the XML made readable.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
             Text(
                 "/" + folder,
                 style = MaterialTheme.typography.bodySmall,

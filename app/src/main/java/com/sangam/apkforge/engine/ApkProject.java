@@ -20,6 +20,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -513,6 +515,91 @@ public final class ApkProject implements Closeable {
         if (parent != null && !parent.exists() && !parent.mkdirs()) throw new IOException("Could not create " + parent);
         if (output.exists() && !output.delete()) throw new IOException("Could not replace " + output);
         module.writeApk(output);
+    }
+
+    // ------------------------------------------------------------------ export source
+
+    /** Progress callback while exporting, so the UI can show which file is being written. */
+    public interface ExportProgress {
+        /** @return false to stop the export. */
+        boolean onFile(int done, int total, String path);
+    }
+
+    /**
+     * Writes a readable copy of every file in the APK to a ZIP: compiled XML (manifest, layouts,
+     * drawables...) is decoded to normal XML, and everything else is copied as-is. Any pending
+     * edits are included. This is for reading and editing on a computer, not for rebuilding
+     * directly; use build() to turn edits back into an APK.
+     *
+     * @return the number of files written.
+     */
+    public int exportSource(File zipFile, ExportProgress progress) throws IOException {
+        List<FileItem> files = listFiles();
+        File parent = zipFile.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) throw new IOException("Could not create " + parent);
+
+        int written = 0;
+        int decoded = 0;
+        try (ZipOutputStream zip = new ZipOutputStream(
+                new java.io.BufferedOutputStream(new java.io.FileOutputStream(zipFile)))) {
+            zip.setLevel(6);
+            writeEntry(zip, "APKFORGE_README.txt", readmeText().getBytes(StandardCharsets.UTF_8));
+
+            for (FileItem item : files) {
+                if (progress != null && !progress.onFile(written, files.size(), item.path)) {
+                    throw new IOException("Export stopped.");
+                }
+                String entryName = item.path;
+                byte[] data;
+                if (item.kind == Kind.BINARY_XML) {
+                    try {
+                        data = readText(item.path).getBytes(StandardCharsets.UTF_8);
+                        decoded++;
+                    } catch (Exception e) {
+                        // A file we couldn't decode is still worth keeping in its raw form.
+                        data = readBytes(item.path);
+                    }
+                } else {
+                    data = readBytes(item.path);
+                }
+                writeEntry(zip, entryName, data);
+                written++;
+            }
+        }
+        // Record how many XML files were turned into readable text, for the UI message.
+        lastExportDecoded = decoded;
+        return written;
+    }
+
+    private int lastExportDecoded;
+
+    public int getLastExportDecodedCount() {
+        return lastExportDecoded;
+    }
+
+    private static void writeEntry(ZipOutputStream zip, String name, byte[] data) throws IOException {
+        ZipEntry entry = new ZipEntry(name);
+        entry.setTime(0L);
+        zip.putNextEntry(entry);
+        zip.write(data);
+        zip.closeEntry();
+    }
+
+    private String readmeText() {
+        return "APK Forge - exported source\n"
+                + "===========================\n\n"
+                + "App package: " + getPackageName() + "\n\n"
+                + "This folder is a readable copy of everything inside the APK.\n"
+                + "- AndroidManifest.xml and the files under res/ were compiled inside the APK;\n"
+                + "  APK Forge has decoded them back into normal, readable XML here.\n"
+                + "- Images, sounds and other files are copied exactly as they were.\n"
+                + "- classes*.dex is the app's compiled code. It is included as-is and is not\n"
+                + "  human-readable; turning it into code needs a separate decompiler.\n"
+                + "- resources.arsc is the compiled resource table. Edit texts, colours and sizes\n"
+                + "  through APK Forge (Strings tab and the AI assistant) rather than this file.\n\n"
+                + "To turn changes back into a working APK, make them in APK Forge and tap Build.\n"
+                + "Editing these files on a computer is for reading and learning; this export is\n"
+                + "not a ready-to-compile Android Studio project.\n";
     }
 
     @Override
