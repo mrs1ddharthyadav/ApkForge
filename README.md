@@ -2,7 +2,7 @@
 
 An Android app for inspecting, editing and re-signing APK files, built in stages.
 
-**Current version: 0.4.0 (Stage 3 + AI assistant).** It can:
+**Current version: 0.4.1 (Stage 3 + AI assistant + export).** It can:
 
 - List every installed app (with search, and a switch for system apps)
 - Open any `.apk` file from your phone, or use "Open with APK Forge" from a file manager
@@ -24,6 +24,9 @@ An Android app for inspecting, editing and re-signing APK files, built in stages
 - **AI assistant (AI tab in Full edit):** describe a change in plain words and Claude finds the right files and
   edits them: layouts, manifest, texts and translations, colors, sizes and switches. Uses your own Claude API key
   (Settings, gear icon on the home screen). The key is stored encrypted with the Android Keystore.
+- **Export source:** save the whole APK as a ZIP for your computer. Compiled XML (manifest, layouts) is decoded
+  to readable text; images and other files are copied as-is; a README inside explains what each part is. This is
+  for reading and editing on a PC, not a ready-to-compile project.
 
 ## How to build and install it
 
