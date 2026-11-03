@@ -7,7 +7,15 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sangam.apkforge.data.ApkSigning
 import com.sangam.apkforge.data.FileOps
+import com.sangam.apkforge.data.SettingsStore
+import com.sangam.apkforge.engine.AiAgent
+import com.sangam.apkforge.engine.AiTools
 import com.sangam.apkforge.engine.ApkProject
+import com.sangam.apkforge.engine.ClaudeClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.runBlocking
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +42,18 @@ data class StringsData(
     val items: List<ApkProject.StringItem>,
     val languages: List<String>,
 )
+
+/** One line in the AI chat. */
+sealed interface ChatItem {
+    val id: Long
+
+    data class User(override val id: Long, val text: String) : ChatItem
+    data class Assistant(override val id: Long, val text: String) : ChatItem
+
+    /** Something Claude is doing with the APK, like "Reading res/layout/main.xml". */
+    data class Activity(override val id: Long, val text: String, val running: Boolean, val error: Boolean) : ChatItem
+    data class Problem(override val id: Long, val text: String) : ChatItem
+}
 
 sealed interface EditorState {
     data object Loading : EditorState
@@ -66,6 +86,33 @@ class ProjectViewModel(app: Application) : AndroidViewModel(app) {
     private val _editor = MutableStateFlow<EditorState>(EditorState.Loading)
     val editor: StateFlow<EditorState> = _editor.asStateFlow()
 
+    /** Selected tab in the full editor: 0 Files, 1 Strings, 2 AI. Kept here so it survives leaving the screen. */
+    val tab = MutableStateFlow(0)
+
+    // ---- AI assistant state ----
+
+    private val settings = SettingsStore(app)
+    private var agent: AiAgent? = null
+    private var aiTools: AiTools? = null
+    private var agentConfig: Triple<String, String, String>? = null
+    private val nextId = AtomicLong(1)
+
+    private val _chat = MutableStateFlow<List<ChatItem>>(emptyList())
+    val chat: StateFlow<List<ChatItem>> = _chat.asStateFlow()
+
+    private val _aiRunning = MutableStateFlow(false)
+    val aiRunning: StateFlow<Boolean> = _aiRunning.asStateFlow()
+
+    /** Tokens used by this chat so far: input to output. */
+    private val _tokens = MutableStateFlow(0L to 0L)
+    val tokens: StateFlow<Pair<Long, Long>> = _tokens.asStateFlow()
+
+    /** Text typed in the AI box, kept while visiting Settings. */
+    val draft = MutableStateFlow("")
+
+    fun hasApiKey(): Boolean = settings.hasApiKey
+    fun modelName(): String = SettingsStore.MODELS.firstOrNull { it.id == settings.model }?.title ?: settings.model
+
     /** Folder shown in the Files tab ("" is the top). */
     private val _folder = MutableStateFlow("")
     val folder: StateFlow<String> = _folder.asStateFlow()
@@ -82,6 +129,8 @@ class ProjectViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = ProjectState.Opening
         _strings.value = null
         _folder.value = ""
+        tab.value = 0
+        resetChat()
         label = title
         viewModelScope.launch {
             val result = withContext(worker) {
@@ -99,8 +148,10 @@ class ProjectViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun close() {
+        agent?.cancel()
         _state.value = ProjectState.Closed
         _strings.value = null
+        resetChat()
         viewModelScope.launch(worker) {
             runCatching { project?.close() }
             project = null
@@ -236,6 +287,121 @@ class ProjectViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- AI assistant ----
+
+    fun sendPrompt(text: String) {
+        val prompt = text.trim()
+        if (prompt.isEmpty() || _aiRunning.value) return
+        val key = settings.apiKey
+        if (key.isNullOrBlank()) {
+            add(ChatItem.Problem(nextId.getAndIncrement(), "Add your Claude API key in Settings first."))
+            return
+        }
+        if (_state.value !is ProjectState.Open) return
+        draft.value = ""
+        add(ChatItem.User(nextId.getAndIncrement(), prompt))
+        _aiRunning.value = true
+
+        viewModelScope.launch {
+            var changesBefore = 0
+            var tools: AiTools? = null
+            try {
+                val pair = withContext(worker) { ensureAgent(key) }
+                val currentAgent = pair.first
+                val currentTools = pair.second
+                tools = currentTools
+                changesBefore = withContext(worker) { currentTools.changes.size }
+                val runner = AiAgent.ToolRunner { name, input ->
+                    runBlocking(worker) { currentTools.run(name, input) }
+                }
+                withContext(Dispatchers.IO) { currentAgent.run(prompt, runner, listener) }
+            } catch (e: Exception) {
+                val msg = e.message ?: "Something went wrong."
+                if (msg == "Stopped.") add(ChatItem.Activity(nextId.getAndIncrement(), "Stopped", running = false, error = false))
+                else add(ChatItem.Problem(nextId.getAndIncrement(), msg))
+            } finally {
+                finishRunningActivities()
+                _aiRunning.value = false
+                val t = tools
+                if (t != null) {
+                    val changed = withContext(worker) { t.changes.size } > changesBefore
+                    if (changed) {
+                        _strings.value = null
+                        publish()
+                    }
+                }
+            }
+        }
+    }
+
+    fun stopAi() {
+        agent?.cancel()
+    }
+
+    /** Forgets the conversation (the APK keeps any changes already made). */
+    fun newChat() {
+        if (_aiRunning.value) return
+        resetChat()
+    }
+
+    private fun resetChat() {
+        agent?.cancel()
+        agent = null
+        aiTools = null
+        agentConfig = null
+        _chat.value = emptyList()
+        _tokens.value = 0L to 0L
+        draft.value = ""
+    }
+
+    /** Creates the agent, or a new one if the key, model or workspace changed. Runs on [worker]. */
+    private fun ensureAgent(key: String): Pair<AiAgent, AiTools> {
+        val p = requireProject()
+        val config = Triple(key, settings.model, settings.workspaceId)
+        val existing = agent
+        val tools = aiTools
+        if (existing != null && tools != null && agentConfig == config) return existing to tools
+        if (existing != null) {
+            add(ChatItem.Activity(nextId.getAndIncrement(), "Settings changed, so this is a new conversation", running = false, error = false))
+        }
+        val client = ClaudeClient(key, settings.workspaceId)
+        val created = AiAgent(client, settings.model, AiAgent.summarize(p, label))
+        val newTools = AiTools(p)
+        agent = created
+        aiTools = newTools
+        agentConfig = config
+        return created to newTools
+    }
+
+    private val listener = object : AiAgent.Listener {
+        override fun onText(text: String) = add(ChatItem.Assistant(nextId.getAndIncrement(), text))
+
+        override fun onToolStarted(description: String) =
+            add(ChatItem.Activity(nextId.getAndIncrement(), description, running = true, error = false))
+
+        override fun onToolFinished(description: String, error: Boolean) {
+            _chat.update { list ->
+                val i = list.indexOfLast { it is ChatItem.Activity && it.running && it.text == description }
+                if (i < 0) list + ChatItem.Activity(nextId.getAndIncrement(), description, running = false, error = error)
+                else list.toMutableList().also { it[i] = (it[i] as ChatItem.Activity).copy(running = false, error = error) }
+            }
+        }
+
+        override fun onUsage(inputTokens: Long, outputTokens: Long) {
+            _tokens.value = inputTokens to outputTokens
+        }
+    }
+
+    private fun add(item: ChatItem) {
+        _chat.update { it + item }
+    }
+
+    private fun finishRunningActivities() {
+        _chat.update { list ->
+            list.map { if (it is ChatItem.Activity && it.running) it.copy(running = false) else it }
+        }
+    }
+
     // ---- helpers ----
 
     private fun requireProject(): ApkProject = project ?: throw IOException("No APK is open for editing.")
@@ -245,7 +411,11 @@ class ProjectViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             setBusy(label)
             try {
-                withContext(worker) { block() }
+                withContext(worker) {
+                    block()
+                    // The AI keeps a copy of files it has read; drop it so it sees manual edits.
+                    aiTools?.clearCache()
+                }
                 publish()
             } catch (e: OutOfMemoryError) {
                 showMessage("This APK is too big for the phone's memory.")
@@ -268,6 +438,7 @@ class ProjectViewModel(app: Application) : AndroidViewModel(app) {
             ?.let { FileOps.safeName(it) }
 
     override fun onCleared() {
+        agent?.cancel()
         runCatching { project?.close() }
         worker.close()
         super.onCleared()

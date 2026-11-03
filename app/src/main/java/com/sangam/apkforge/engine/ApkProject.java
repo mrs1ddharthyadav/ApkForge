@@ -6,6 +6,8 @@ import com.reandroid.archive.InputSource;
 import com.reandroid.arsc.chunk.PackageBlock;
 import com.reandroid.arsc.chunk.xml.AndroidManifestBlock;
 import com.reandroid.arsc.chunk.xml.ResXmlDocument;
+import com.reandroid.arsc.coder.EncodeResult;
+import com.reandroid.arsc.coder.ValueCoder;
 import com.reandroid.arsc.model.ResourceEntry;
 import com.reandroid.arsc.value.DataType;
 import com.reandroid.arsc.value.Entry;
@@ -326,6 +328,166 @@ public final class ApkProject implements Closeable {
         if (target == null) throw new IOException("This string has no " + describeQualifiers(qualifiers) + " version.");
         target.setDataAsString(value);
         modified = true;
+    }
+
+    /**
+     * Sets a string by name. If [createLanguage] is true and the string has no version for
+     * [qualifiers] yet (for example "-hi" for Hindi), that version is created.
+     */
+    public void setStringByName(String name, String qualifiers, String value, boolean createLanguage) throws IOException {
+        String q = normalizeQualifiers(qualifiers);
+        PackageBlock pkg = packageBlock();
+        ResourceEntry re = pkg.getResource("string", name);
+        if (re == null) throw new IOException("There is no string named \"" + name + "\".");
+        for (Entry e : re) {
+            if (qualifiersOf(e).equals(q)) {
+                e.setDataAsString(value);
+                modified = true;
+                return;
+            }
+        }
+        if (!createLanguage) throw new IOException("\"" + name + "\" has no " + describeQualifiers(q) + " version.");
+        if (q.isEmpty()) throw new IOException("\"" + name + "\" has no default version and one can't be added.");
+        Entry created = re.getOrCreate(q);
+        if (created == null) throw new IOException("Could not add a " + describeQualifiers(q) + " version.");
+        created.setDataAsString(value);
+        modified = true;
+    }
+
+    /**
+     * Accepts "", "default", "hi", "-hi", "pt-BR", "pt-rBR", "-pt-rBR" and returns Android's
+     * qualifier form: "", "-hi" or "-pt-rBR".
+     */
+    public static String normalizeQualifiers(String raw) throws IOException {
+        if (raw == null) return "";
+        String s = raw.trim();
+        if (s.isEmpty() || s.equalsIgnoreCase("default")) return "";
+        if (s.startsWith("-")) s = s.substring(1);
+        String[] parts = s.split("[-_]");
+        String lang = parts[0].toLowerCase(Locale.ROOT);
+        if (!lang.matches("[a-z]{2,3}")) {
+            throw new IOException("\"" + raw + "\" is not a language code. Use codes like hi, es or pt-BR.");
+        }
+        if (parts.length == 1) return "-" + lang;
+        String region = parts[1];
+        if (region.length() == 3 && (region.charAt(0) == 'r' || region.charAt(0) == 'R')) region = region.substring(1);
+        if (parts.length > 2 || !region.matches("[A-Za-z]{2}")) {
+            throw new IOException("\"" + raw + "\" is not a language code. Use codes like hi, es or pt-BR.");
+        }
+        return "-" + lang + "-r" + region.toUpperCase(Locale.ROOT);
+    }
+
+    // ------------------------------------------------------------------ simple values
+
+    /** Resource types whose values are simple and safe to edit as text. */
+    public static final List<String> VALUE_TYPES = Collections.unmodifiableList(
+            Arrays.asList("color", "dimen", "bool", "integer"));
+
+    /** One color / dimen / bool / integer resource and its value per qualifier, as text. */
+    public static final class ValueItem {
+        public final String type;
+        public final String name;
+        public final Map<String, String> values;
+
+        ValueItem(String type, String name, Map<String, String> values) {
+            this.type = type;
+            this.name = name;
+            this.values = values;
+        }
+    }
+
+    public List<ValueItem> listValues(String type) throws IOException {
+        checkValueType(type);
+        List<ValueItem> out = new ArrayList<>();
+        PackageBlock pkg = packageBlockOrNull();
+        if (pkg == null) return out;
+        Iterator<ResourceEntry> it = pkg.getResources(type);
+        while (it.hasNext()) {
+            ResourceEntry re = it.next();
+            Map<String, String> values = new LinkedHashMap<>();
+            for (Entry e : re) {
+                if (e == null || e.isComplex()) continue;
+                ResValue v = e.getResValue();
+                if (v == null) continue;
+                String text = decodeValue(pkg, v);
+                if (text != null) values.put(qualifiersOf(e), text);
+            }
+            if (!values.isEmpty()) out.add(new ValueItem(type, re.getName(), values));
+        }
+        Collections.sort(out, (a, b) -> a.name.compareToIgnoreCase(b.name));
+        return out;
+    }
+
+    /**
+     * Sets a color ("#FF5722", "@color/other"), dimen ("16dp", "14sp"), bool ("true") or
+     * integer ("42") resource for one existing qualifier ("" = default, "-night" etc.).
+     */
+    public void setValue(String type, String name, String qualifiers, String value) throws IOException {
+        checkValueType(type);
+        PackageBlock pkg = packageBlock();
+        ResourceEntry re = pkg.getResource(type, name);
+        if (re == null) throw new IOException("There is no " + type + " named \"" + name + "\".");
+        String q = qualifiers == null ? "" : qualifiers.trim();
+        if (!q.isEmpty() && !q.startsWith("-")) q = "-" + q;
+        Entry target = null;
+        for (Entry e : re) {
+            if (e != null && !e.isComplex() && e.getResValue() != null && qualifiersOf(e).equals(q)) {
+                target = e;
+                break;
+            }
+        }
+        if (target == null) throw new IOException(type + "/" + name + " has no \"" + (q.isEmpty() ? "default" : q) + "\" version.");
+        String v = value.trim();
+        EncodeResult r = v.startsWith("@") ? ValueCoder.encodeReference(pkg, v) : ValueCoder.encode(v);
+        if (r == null || r.isError()) throw new IOException("\"" + value + "\" is not a valid " + type + " value." + exampleFor(type));
+        if (!fits(type, r.dataType)) throw new IOException("\"" + value + "\" is not a " + type + "." + exampleFor(type));
+        target.getResValue().setData(r);
+        modified = true;
+    }
+
+    private static String decodeValue(PackageBlock pkg, ResValue v) {
+        DataType dt = v.getDataType();
+        try {
+            if (dt == DataType.REFERENCE || dt == DataType.ATTRIBUTE) {
+                return ValueCoder.decodeReference(pkg, dt, v.getData());
+            }
+            if (dt == DataType.STRING) return v.getDataAsString();
+            return ValueCoder.decode(dt, v.getData());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static boolean fits(String type, DataType dt) {
+        if (dt == DataType.REFERENCE) return true;
+        switch (type) {
+            case "color":
+                return dt == DataType.COLOR_ARGB8 || dt == DataType.COLOR_RGB8
+                        || dt == DataType.COLOR_ARGB4 || dt == DataType.COLOR_RGB4;
+            case "dimen":
+                return dt == DataType.DIMENSION || dt == DataType.FRACTION || dt == DataType.FLOAT;
+            case "bool":
+                return dt == DataType.BOOLEAN;
+            case "integer":
+                return dt == DataType.DEC || dt == DataType.HEX;
+            default:
+                return false;
+        }
+    }
+
+    private static String exampleFor(String type) {
+        switch (type) {
+            case "color": return " Use a color like #FF5722 or #CC000000.";
+            case "dimen": return " Use a size like 16dp or 14sp.";
+            case "bool": return " Use true or false.";
+            default: return " Use a whole number like 42.";
+        }
+    }
+
+    private static void checkValueType(String type) throws IOException {
+        if (!VALUE_TYPES.contains(type)) {
+            throw new IOException("Type must be one of " + VALUE_TYPES + ".");
+        }
     }
 
     private static String qualifiersOf(Entry e) {

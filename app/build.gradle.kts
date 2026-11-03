@@ -12,8 +12,8 @@ android {
         applicationId = "com.sangam.apkforge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.3.0"
+        versionCode = 5
+        versionName = "0.4.0"
     }
 
     // One fixed key for every build, so each new version installs as an update

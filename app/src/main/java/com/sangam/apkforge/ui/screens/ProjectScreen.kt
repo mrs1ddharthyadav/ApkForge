@@ -79,10 +79,12 @@ fun ProjectScreen(
     snackbar: SnackbarHostState,
     busy: Boolean,
     onOpenEditor: (String) -> Unit,
+    onOpenSettings: () -> Unit,
     onExit: () -> Unit,
 ) {
     val state by pvm.state.collectAsState()
-    var tab by rememberSaveable { mutableStateOf(0) }
+    val tab by pvm.tab.collectAsState()
+    val aiRunning by pvm.aiRunning.collectAsState()
     var confirmExit by remember { mutableStateOf(false) }
     var showBuild by remember { mutableStateOf(false) }
     val open = state as? ProjectState.Open
@@ -119,7 +121,7 @@ fun ProjectScreen(
                 },
                 actions = {
                     if (open != null) {
-                        TextButton(onClick = { showBuild = true }, enabled = !busy) {
+                        TextButton(onClick = { showBuild = true }, enabled = !busy && !aiRunning) {
                             Icon(Icons.Filled.Build, contentDescription = null, modifier = Modifier.size(18.dp))
                             Text("  Build")
                         }
@@ -142,11 +144,15 @@ fun ProjectScreen(
                 }
                 is ProjectState.Open -> {
                     TabRow(selectedTabIndex = tab) {
-                        Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Files") })
-                        Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Strings") })
+                        Tab(selected = tab == 0, onClick = { pvm.tab.value = 0 }, text = { Text("Files") })
+                        Tab(selected = tab == 1, onClick = { pvm.tab.value = 1 }, text = { Text("Strings") })
+                        Tab(selected = tab == 2, onClick = { pvm.tab.value = 2 }, text = { Text("AI") })
                     }
-                    if (tab == 0) FilesTab(pvm, s.files, busy, onOpenEditor)
-                    else StringsTab(pvm, busy)
+                    when (tab) {
+                        0 -> FilesTab(pvm, s.files, busy || aiRunning, onOpenEditor)
+                        1 -> StringsTab(pvm, busy || aiRunning)
+                        else -> AiTab(pvm, onOpenSettings)
+                    }
                 }
             }
         }
@@ -156,7 +162,12 @@ fun ProjectScreen(
         AlertDialog(
             onDismissRequest = { confirmExit = false },
             title = { Text("Discard changes?") },
-            text = { Text("You changed this APK but didn't build it. Leaving now throws the changes away.") },
+            text = {
+                Text(
+                    "You changed this APK but didn't build it. Leaving now throws the changes away" +
+                        (if (aiRunning) " and stops the AI." else ".")
+                )
+            },
             confirmButton = {
                 TextButton(onClick = { confirmExit = false; onExit() }) { Text("Discard") }
             },

@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,7 +48,7 @@ import com.sangam.apkforge.ui.PrimaryAction
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(vm: MainViewModel, snackbar: SnackbarHostState, onPickApk: () -> Unit) {
+fun HomeScreen(vm: MainViewModel, snackbar: SnackbarHostState, onPickApk: () -> Unit, onOpenSettings: () -> Unit) {
     val apps by vm.apps.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
     var showSystem by rememberSaveable { mutableStateOf(false) }
@@ -68,6 +69,9 @@ fun HomeScreen(vm: MainViewModel, snackbar: SnackbarHostState, onPickApk: () -> 
                 actions = {
                     IconButton(onClick = vm::refreshApps) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Reload app list")
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
                     }
                 },
             )

@@ -29,6 +29,7 @@ import com.sangam.apkforge.ui.screens.EditScreen
 import com.sangam.apkforge.ui.screens.FilesScreen
 import com.sangam.apkforge.ui.screens.HomeScreen
 import com.sangam.apkforge.ui.screens.ProjectScreen
+import com.sangam.apkforge.ui.screens.SettingsScreen
 import com.sangam.apkforge.ui.screens.TextEditorScreen
 import com.sangam.apkforge.ui.theme.ApkForgeTheme
 
@@ -111,7 +112,7 @@ private fun App(vm: MainViewModel, pvm: ProjectViewModel, onExit: () -> Unit) {
     }
 
     when (val s = screen) {
-        Screen.Home -> HomeScreen(vm, snackbar, onPickApk = openPicker)
+        Screen.Home -> HomeScreen(vm, snackbar, onPickApk = openPicker, onOpenSettings = vm::openSettings)
         Screen.Details -> DetailsScreen(vm, snackbar, onFullEdit = {
             val d = (vm.details.value as? DetailsState.Loaded)?.details
             if (d != null) {
@@ -126,11 +127,13 @@ private fun App(vm: MainViewModel, pvm: ProjectViewModel, onExit: () -> Unit) {
             snackbar = snackbar,
             busy = busy != null,
             onOpenEditor = vm::openTextEditor,
+            onOpenSettings = vm::openSettings,
             onExit = {
                 pvm.close()
                 vm.back()
             },
         )
+        is Screen.Settings -> SettingsScreen(onBack = { vm.back() })
         is Screen.TextEditor -> TextEditorScreen(
             pvm = pvm,
             path = s.path,

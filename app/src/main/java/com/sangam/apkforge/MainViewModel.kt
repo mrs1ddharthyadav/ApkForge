@@ -30,6 +30,7 @@ sealed interface Screen {
     data object Edit : Screen
     data object Project : Screen
     data class TextEditor(val path: String) : Screen
+    data class Settings(val from: Screen) : Screen
 }
 
 sealed interface DetailsState {
@@ -186,6 +187,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             Screen.Edit -> _screen.value = Screen.Details
             Screen.Project -> _screen.value = Screen.Details
             is Screen.TextEditor -> _screen.value = Screen.Project
+            is Screen.Settings -> _screen.value = s.from
             is Screen.Files -> {
                 _screen.value = if (s.folder.isEmpty()) Screen.Details
                 else Screen.Files(s.folder.substringBeforeLast('/', missingDelimiterValue = ""))
@@ -359,6 +361,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun openFullEditor() {
         if (current() == null) return
         _screen.value = Screen.Project
+    }
+
+    fun openSettings() {
+        val current = _screen.value
+        if (current !is Screen.Settings) _screen.value = Screen.Settings(current)
     }
 
     fun openTextEditor(path: String) {
